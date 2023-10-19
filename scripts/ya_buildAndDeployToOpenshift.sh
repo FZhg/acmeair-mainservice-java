@@ -19,6 +19,7 @@ DOCKERFILE=Dockerfile
 EXTERNAL_REGISTRY=$(oc get route default-route -n openshift-image-registry --template='{{ .spec.host }}')
 PROJECT_NAME=$(oc project -q)
 
+
 if [[ ${1} == "" ]]
 then
   echo "Using Docker to build/push"
@@ -38,14 +39,13 @@ then
   exit
 fi
 
-# kubectl delete secret regcred
-# kubectl create secret docker-registry regcred --docker-server=$EXTERNAL_REGISTRY --docker-username=$(oc whoami) --docker-password=$(oc whoami -t)
+kubectl create secret docker-registry regcred --docker-server=$EXTERNAL_REGISTRY --docker-username=$(oc whoami) --docker-password=$(oc whoami -t)
 
-# MONGO_CLONE=$EXTERNAL_REGISTRY/$PROJECT_NAME/mongo
+MONGO_CLONE=$EXTERNAL_REGISTRY/$PROJECT_NAME/mongo
+docker pull mongo
+docker tag mongo $MONGO_CLONE
+docker push $MONGO_CLONE
 
-# sed -i "s|image: mongo|image: ${MONGO_CLONE}|" ../../acmeair-flightservice-java/manifests-openshift/deploy-acmeair-flightservice-java.yaml
-# sed -i "s|image: mongo|image: ${MONGO_CLONE}|" ../../acmeair-customerservice-java/manifests-openshift/deploy-acmeair-customerservice-java.yaml
-# sed -i "s|image: mongo|image: ${MONGO_CLONE}|" ../../acmeair-bookingservice-java/manifests-openshift/deploy-acmeair-bookingservice-java.yaml
 
 IMAGE_PREFIX_EXTERNAL=${EXTERNAL_REGISTRY}/${PROJECT_NAME}
 IMAGE_PREFIX=image-registry.openshift-image-registry.svc:5000/${PROJECT_NAME}
@@ -133,6 +133,7 @@ then
 fi
 
 kubectl apply -f ${MANIFESTS}
+kubectl patch deployment acmeair-booking-db -p "{\"spec\":{\"template\":{\"spec\":{\"imagePullSecrets\":[{\"name\":\"regcred\"}], \"containers\":[{\"name\":\"acmeair-booking-db\", \"image\": \"$MONGO_CLONE\",  \"imagePullPolicy\":\"Always\" }]}}}}"
 
 echo "Removing ${IMAGE_PREFIX}"
 sed -i.bak "s@${IMAGE_PREFIX}/acmeair-bookingservice-java:latest@acmeair-bookingservice-java:latest@" ${MANIFESTS}/deploy-acmeair-bookingservice-java.yaml
@@ -164,6 +165,7 @@ then
 fi
 
 kubectl apply -f ${MANIFESTS}
+kubectl patch deployment acmeair-customer-db -p "{\"spec\":{\"template\":{\"spec\":{\"imagePullSecrets\":[{\"name\":\"regcred\"}], \"containers\":[{\"name\":\"acmeair-customer-db\", \"image\": \"$MONGO_CLONE\",  \"imagePullPolicy\":\"Always\" }]}}}}"
 
 echo "Removing ${IMAGE_PREFIX}"
 sed -i.bak "s@${IMAGE_PREFIX}/acmeair-customerservice-java:latest@acmeair-customerservice-java:latest@" ${MANIFESTS}/deploy-acmeair-customerservice-java.yaml
@@ -193,6 +195,7 @@ then
 fi
 
 kubectl apply -f ${MANIFESTS}
+kubectl patch deployment acmeair-flight-db -p "{\"spec\":{\"template\":{\"spec\":{\"imagePullSecrets\":[{\"name\":\"regcred\"}], \"containers\":[{\"name\":\"acmeair-flight-db\", \"image\": \"$MONGO_CLONE\",  \"imagePullPolicy\":\"Always\" }]}}}}"
 
 echo "Removing ${IMAGE_PREFIX}"
 sed -i.bak "s@${IMAGE_PREFIX}/acmeair-flightservice-java:latest@acmeair-flightservice-java:latest@" ${MANIFESTS}/deploy-acmeair-flightservice-java.yaml
@@ -203,5 +206,4 @@ sed -i.bak "s@${ROUTE_HOST}@_HOST_@" ${MANIFESTS}/acmeair-flightservice-route.ya
 rm ${MANIFESTS}/acmeair-flightservice-route.yaml.bak
 rm ${MANIFESTS}/deploy-acmeair-flightservice-java.yaml.bak
 
-
-
+kubectl get replicasets | grep -v "Name" | grep  "\-db" | awk '{ print $1; }' | xargs kubectl delete replicaset
